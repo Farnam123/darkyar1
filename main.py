@@ -6,13 +6,10 @@ from telegram.ext import (
     ContextTypes,
 )
 from fastapi import FastAPI
-from starlette.requests import Request
-import uvicorn
 
-# اطلاعات لازم
+# اطلاعات محیطی
 TOKEN = os.getenv("BOT_TOKEN")
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
-PORT = int(os.environ.get("PORT", 8080))
 
 # FastAPI app
 fastapi_app = FastAPI()
@@ -21,25 +18,20 @@ fastapi_app = FastAPI()
 async def root():
     return {"status": "🟢 DarkYar bot is alive and running!"}
 
-# ربات تلگرام
+# تعریف هندلر ربات
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("سلام! من دارک‌یارم 😈")
 
-# تابع اصلی اجرا
-def main():
-    app = ApplicationBuilder().token(TOKEN).get_webhook_application(
-        webhook_path=f"/webhook/{TOKEN}",
-        web_app=fastapi_app
-    )
+# اتصال FastAPI و ربات تلگرام
+application = ApplicationBuilder().token(TOKEN).build()
+application.add_handler(CommandHandler("start", start))
 
-    app.add_handler(CommandHandler("start", start))
+# اتصال FastAPI به webhook ربات
+webhook_path = f"/webhook/{TOKEN}"
+telegram_app = application.get_webhook_application(
+    webhook_path=webhook_path,
+    web_app=fastapi_app,
+)
 
-    # اجرای Webhook روی FastAPI
-    uvicorn.run(
-        fastapi_app,
-        host="0.0.0.0",
-        port=PORT
-    )
-
-if __name__ == '__main__':
-    main()
+# خروجی نهایی برای Render
+app = telegram_app
