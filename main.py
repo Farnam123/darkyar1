@@ -1,33 +1,45 @@
-from telegram import Update
-from telegram.ext import ApplicationBuilder, MessageHandler, filters, CommandHandler, ContextTypes
-import json
 import os
-from config import BOT_TOKEN, DATA_FILE
-from responses import generate_response, update_user_score
+from telegram import Update
+from telegram.ext import (
+    ApplicationBuilder,
+    CommandHandler,
+    ContextTypes,
+)
+from fastapi import FastAPI
+from starlette.requests import Request
+import uvicorn
 
-# ایجاد فایل دیتا در صورت عدم وجود
-if not os.path.exists("data"):
-    os.makedirs("data")
-if not os.path.exists(DATA_FILE):
-    with open(DATA_FILE, "w") as f:
-        json.dump({}, f)
+# اطلاعات لازم
+TOKEN = os.getenv("BOT_TOKEN")
+WEBHOOK_URL = os.getenv("WEBHOOK_URL")
+PORT = int(os.environ.get("PORT", 8080))
 
-# فرمان شروع
+# FastAPI app
+fastapi_app = FastAPI()
+
+@fastapi_app.get("/")
+async def root():
+    return {"status": "🟢 DarkYar bot is alive and running!"}
+
+# ربات تلگرام
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("سلام! من دارک‌یارم، یارِ تحلیل‌گر شما با لهجه‌ی کرمانی!")
+    await update.message.reply_text("سلام! من دارک‌یارم 😈")
 
-# پاسخ به پیام‌ها
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = str(update.message.from_user.id)
-    text = update.message.text
-    response, user_data = generate_response(user_id, text)
-    update_user_score(user_id, user_data)
-    await update.message.reply_text(response)
+# تابع اصلی اجرا
+def main():
+    app = ApplicationBuilder().token(TOKEN).get_webhook_application(
+        webhook_path=f"/webhook/{TOKEN}",
+        web_app=fastapi_app
+    )
 
-# اجرای ربات
-app = ApplicationBuilder().token(BOT_TOKEN).build()
-app.add_handler(CommandHandler("start", start))
-app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    app.add_handler(CommandHandler("start", start))
 
-if __name__ == "__main__":
-    app.run_polling()
+    # اجرای Webhook روی FastAPI
+    uvicorn.run(
+        fastapi_app,
+        host="0.0.0.0",
+        port=PORT
+    )
+
+if __name__ == '__main__':
+    main()
