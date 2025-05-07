@@ -1,41 +1,64 @@
+# main.py
 import os
-from telegram import Update
-from telegram.ext import Application, CommandHandler, ContextTypes
-from telegram.ext.webhookhandler import WebhookRequestHandler
 from fastapi import FastAPI, Request
-import telegram
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import (
+    Application,
+    CommandHandler,
+    ContextTypes,
+    CallbackQueryHandler,
+)
 
 TOKEN = os.getenv("BOT_TOKEN")
-WEBHOOK_URL = os.getenv("WEBHOOK_URL")
-PORT = int(os.environ.get("PORT", 8080))
+WEBHOOK_PATH = f"/{TOKEN}"
+WEBHOOK_URL = f"https://{os.getenv('RENDER_EXTERNAL_HOSTNAME')}{WEBHOOK_PATH}"
 
 app = FastAPI()
-bot_app = Application.builder().token(TOKEN).build()
+telegram_app = Application.builder().token(TOKEN).build()
 
-# فرمان start
+
+# ⬇️ /start command
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("سلام! من دارک‌یارم 😈")
+    keyboard = [
+        [
+            InlineKeyboardButton("📊 پروفایل من", callback_data="profile"),
+            InlineKeyboardButton("🏆 رتبه‌بندی", callback_data="ranking"),
+        ],
+        [
+            InlineKeyboardButton("⚙️ تنظیمات", callback_data="settings"),
+        ]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text("سلام! خوش اومدی به دارک‌یار 🤖", reply_markup=reply_markup)
 
-bot_app.add_handler(CommandHandler("start", start))
 
-# هندل کردن webhook با FastAPI
-@app.post(f"/webhook/{TOKEN}")
-async def webhook(request: Request):
-    data = await request.body()
-    await bot_app.update_queue.put(telegram.Update.de_json(data.decode(), bot_app.bot))
-    return {"status": "received"}
+# ⬇️ پاسخ به دکمه‌های اینلاین
+async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
 
-@app.get("/")
-async def root():
-    return {"status": "🟢 DarkYar bot is alive and running!"}
+    if query.data == "profile":
+        await query.edit_message_text("📊 اینجا قراره پروفایل رفتاری شما نمایش داده بشه (در حال توسعه)")
+    elif query.data == "ranking":
+        await query.edit_message_text("🏆 لیست رتبه‌بندی کاربران گروه بزودی فعال میشه!")
+    elif query.data == "settings":
+        await query.edit_message_text("⚙️ بخش تنظیمات فعلاً در حال آماده‌سازیه.")
 
-# راه‌اندازی Webhook
-if __name__ == "__main__":
-    import uvicorn
 
-    async def set_webhook():
-        await bot_app.bot.set_webhook(f"{WEBHOOK_URL}/webhook/{TOKEN}")
+telegram_app.add_handler(CommandHandler("start", start))
+telegram_app.add_handler(CallbackQueryHandler(button_handler))
 
-    bot_app.initialize()
-    bot_app.post_init(set_webhook)
-    uvicorn.run(app, host="0.0.0.0", port=PORT)
+
+# Webhook endpoint
+@app.post(WEBHOOK_PATH)
+async def telegram_webhook(req: Request):
+    data = await req.json()
+    update = Update.de_json(data, telegram_app.bot)
+    await telegram_app.process_update(update)
+    return {"status": "ok"}
+
+
+@app.on_event("startup")
+async def on_startup():
+    await telegram_app.bot.set_webhook(url=WEBHOOK_URL)
+    print(f"Webhook set to: {WEBHOOK_URL}")
